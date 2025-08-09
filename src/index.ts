@@ -33,16 +33,34 @@ class EACCMCPServer {
   private async initializeEACCClient() {
     if (this.eaccClient) return;
     
-    const addresses = getNetworkAddresses(ARBITRUM_ONE_MAINNET);
-    this.eaccClient = new EACCClient({
-      marketplaceV2Address: addresses.marketplaceV2,
-      marketplaceDataV1Address: addresses.marketplaceDataV1,
-      chainId: ARBITRUM_ONE_MAINNET,
-      ipfsConfig: {
-        gateway: 'https://ipfs.io/ipfs/',
-        apiEndpoint: 'https://api.pinata.cloud'
-      }
-    });
+    try {
+      console.error('Starting EACC client initialization...');
+      const addresses = getNetworkAddresses(ARBITRUM_ONE_MAINNET);
+      console.error('Got addresses:', addresses);
+      
+      this.eaccClient = new EACCClient({
+        marketplaceV2Address: addresses.marketplaceV2,
+        marketplaceDataV1Address: addresses.marketplaceDataV1,
+        chainId: ARBITRUM_ONE_MAINNET,
+        ipfsConfig: {
+          gateway: 'https://ipfs.io/ipfs/',
+          apiEndpoint: 'https://api.pinata.cloud'
+        }
+      });
+      console.error('EACCClient created');
+      
+      const rpcUrl = process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+      const dummyPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+      // This private key is a well known test key from Hardhat. Do not import it or deposit funds to this wallet.
+      // eacc-ts needs to allow non-signer read functionality w/ only provider
+      console.error('Connecting with dummy private key for read-only access...');
+      await this.eaccClient.connectWithPrivateKey(dummyPrivateKey, rpcUrl);
+      console.error('Provider connected');
+      console.error('Client methods available:', Object.getOwnPropertyNames(Object.getPrototypeOf(this.eaccClient)));
+    } catch (error) {
+      console.error('Error during initialization:', error);
+      throw error;
+    }
   }
 
   private setupToolHandlers() {
@@ -153,9 +171,13 @@ class EACCMCPServer {
 
   private async getJobCount() {
     try {
+      console.error('getJobCount called');
       if (!this.eaccClient) throw new Error('Client not initialized');
+      console.error('Client exists, checking methods...');
+      console.error('getJobsLength method exists:', typeof this.eaccClient.getJobsLength);
       
       const count = await this.eaccClient.getJobsLength();
+      console.error('Got count:', count);
       
       return {
         content: [
@@ -166,6 +188,7 @@ class EACCMCPServer {
         ],
       };
     } catch (error) {
+      console.error('Error in getJobCount:', error);
       return {
         content: [
           {
@@ -186,7 +209,7 @@ class EACCMCPServer {
       const totalJobs = await this.eaccClient.getJobsLength();
       console.error(`Total jobs in marketplace: ${totalJobs}`);
       
-      if (totalJobs === 0) {
+      if ((totalJobs as number) === 0) {
         return {
           content: [
             {
@@ -299,9 +322,9 @@ Title: ${job.title || 'Untitled'}
 Content hash: ${job.contentHash || 'No content available'}
 Payment: ${job.amount || 'TBD'}
 Status: ${job.state || 'Unknown'}
-Owner: ${job.roles.creator || 'Unknown'}
-${job.roles.worker ? `Worker: ${job.roles.worker}` : ''}
-Created: ${job.timestamp ? new Date(job.timestamp * 1000).toLocaleString() : 'Unknown'}`;
+Owner: ${job.roles?.creator || 'Unknown'}
+${job.roles?.worker ? `Worker: ${job.roles.worker}` : ''}
+Created: ${job.timestamp ? new Date((job.timestamp as number) * 1000).toLocaleString() : 'Unknown'}`;
 
       return {
         content: [
@@ -329,7 +352,7 @@ Created: ${job.timestamp ? new Date(job.timestamp * 1000).toLocaleString() : 'Un
       const { limit = 10 } = args;
       const totalJobs = await this.eaccClient.getJobsLength();
       
-      if (totalJobs === 0) {
+      if ((totalJobs as number) === 0) {
         return {
           content: [
             {
@@ -340,7 +363,7 @@ Created: ${job.timestamp ? new Date(job.timestamp * 1000).toLocaleString() : 'Un
         };
       }
       
-      const startIndex = Math.max(0, totalJobs as number - limit);
+      const startIndex = Math.max(0, (totalJobs as number) - limit);
       const recentJobs = await this.eaccClient.getJobs(startIndex, totalJobs as number);
       const sortedJobs = recentJobs.reverse();
 
@@ -357,7 +380,7 @@ Created: ${job.timestamp ? new Date(job.timestamp * 1000).toLocaleString() : 'Un
 
       const jobList = sortedJobs.map((job, index) => {
         const timeInfo = job.timestamp 
-          ? ` - ${new Date(job.timestamp * 1000).toLocaleString()}`
+          ? ` - ${new Date((job.timestamp as number) * 1000).toLocaleString()}`
           : '';
         return `${index + 1}. Escrow ID ${job.escrowId}: ${job.title || 'Untitled'}${timeInfo}`;
       }).join('\n');
